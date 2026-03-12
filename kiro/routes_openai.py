@@ -48,6 +48,7 @@ from kiro.models_openai import (
 from kiro.auth import KiroAuthManager, AuthType
 from kiro.cache import ModelInfoCache
 from kiro.model_resolver import ModelResolver
+from kiro.token_pool import TokenPool
 from kiro.converters_openai import build_kiro_payload
 from kiro.streaming_openai import stream_kiro_to_openai, collect_stream_response, stream_with_first_token_retry
 from kiro.http_client import KiroHttpClient
@@ -174,8 +175,9 @@ async def chat_completions(request: Request, request_data: ChatCompletionRequest
         HTTPException: On validation or API errors
     """
     logger.info(f"Request to /v1/chat/completions (model={request_data.model}, stream={request_data.stream})")
-    
-    auth_manager: KiroAuthManager = request.app.state.auth_manager
+
+    token_pool: TokenPool = request.app.state.token_pool
+    auth_manager: KiroAuthManager = await token_pool.get_auth_manager()
     model_cache: ModelInfoCache = request.app.state.model_cache
     usage_stats: UsageStats = request.app.state.usage_stats
     
@@ -339,6 +341,7 @@ async def chat_completions(request: Request, request_data: ChatCompletionRequest
                 error_content = b"Unknown error"
             
             await http_client.close()
+            token_pool.release(auth_manager)
             error_text = error_content.decode('utf-8', errors='replace')
             
             # Try to parse JSON response from Kiro to extract error message
@@ -433,6 +436,7 @@ async def chat_completions(request: Request, request_data: ChatCompletionRequest
                     raise
                 finally:
                     await http_client.close()
+                    token_pool.release(auth_manager)
                     usage_stats.record_request(
                         client_name, request_data.model, success=not streaming_error,
                         input_tokens=tracked_prompt_tokens,
@@ -470,6 +474,7 @@ async def chat_completions(request: Request, request_data: ChatCompletionRequest
             )
             
             await http_client.close()
+            token_pool.release(auth_manager)
 
             # Extract token counts from response for usage tracking
             resp_usage = openai_response.get("usage", {})
@@ -490,6 +495,7 @@ async def chat_completions(request: Request, request_data: ChatCompletionRequest
     
     except HTTPException as e:
         await http_client.close()
+        token_pool.release(auth_manager)
         usage_stats.record_request(client_name, request_data.model, success=False)
         # Log access log for HTTP error
         logger.error(f"HTTP {e.status_code} - POST /v1/chat/completions - {e.detail}")
@@ -499,6 +505,7 @@ async def chat_completions(request: Request, request_data: ChatCompletionRequest
         raise
     except Exception as e:
         await http_client.close()
+        token_pool.release(auth_manager)
         usage_stats.record_request(client_name, request_data.model, success=False)
         logger.error(f"Internal error: {e}", exc_info=True)
         # Log access log for internal error

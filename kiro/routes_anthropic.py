@@ -44,6 +44,7 @@ from kiro.models_anthropic import (
 )
 from kiro.auth import KiroAuthManager, AuthType
 from kiro.cache import ModelInfoCache
+from kiro.token_pool import TokenPool
 from kiro.converters_anthropic import anthropic_to_kiro
 from kiro.streaming_anthropic import (
     stream_kiro_to_anthropic,
@@ -147,11 +148,12 @@ async def messages(
         HTTPException: On validation or API errors
     """
     logger.info(f"Request to /v1/messages (model={request_data.model}, stream={request_data.stream})")
-    
+
     if anthropic_version:
         logger.debug(f"Anthropic-Version header: {anthropic_version}")
-    
-    auth_manager: KiroAuthManager = request.app.state.auth_manager
+
+    token_pool: TokenPool = request.app.state.token_pool
+    auth_manager: KiroAuthManager = await token_pool.get_auth_manager()
     model_cache: ModelInfoCache = request.app.state.model_cache
     usage_stats: UsageStats = request.app.state.usage_stats
     
@@ -381,6 +383,7 @@ async def messages(
                 error_content = b"Unknown error"
             
             await http_client.close()
+            token_pool.release(auth_manager)
             error_text = error_content.decode('utf-8', errors='replace')
             
             # Try to parse JSON response from Kiro to extract error message
@@ -472,6 +475,7 @@ async def messages(
                         pass
                 finally:
                     await http_client.close()
+                    token_pool.release(auth_manager)
                     usage_stats.record_request(
                         client_name, request_data.model, success=not streaming_error,
                         input_tokens=tracked_input_tokens,
@@ -514,6 +518,7 @@ async def messages(
             )
             
             await http_client.close()
+            token_pool.release(auth_manager)
 
             # Extract token counts from response for usage tracking
             resp_usage = anthropic_response.get("usage", {})
@@ -531,6 +536,7 @@ async def messages(
     
     except HTTPException as e:
         await http_client.close()
+        token_pool.release(auth_manager)
         usage_stats.record_request(client_name, request_data.model, success=False)
         logger.error(f"HTTP {e.status_code} - POST /v1/messages - {e.detail}")
         if debug_logger:
@@ -538,6 +544,7 @@ async def messages(
         raise
     except Exception as e:
         await http_client.close()
+        token_pool.release(auth_manager)
         usage_stats.record_request(client_name, request_data.model, success=False)
         logger.error(f"Internal error: {e}", exc_info=True)
         logger.error(f"HTTP 500 - POST /v1/messages - {str(e)[:100]}")
