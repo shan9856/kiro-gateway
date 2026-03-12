@@ -75,11 +75,16 @@ from kiro.config import (
     VPN_PROXY_URL,
     USAGE_STATS_FILE,
     USAGE_STATS_SAVE_EVERY,
+    ALL_KIRO_CREDS_FILES,
+    ALL_REFRESH_TOKENS,
+    ALL_KIRO_CLI_DB_FILES,
+    TOKEN_POOL_STRATEGY,
     _warn_timeout_configuration,
 )
 from kiro.auth import KiroAuthManager
 from kiro.cache import ModelInfoCache
 from kiro.model_resolver import ModelResolver
+from kiro.token_pool import TokenPool
 from kiro.routes_openai import router as openai_router
 from kiro.routes_anthropic import router as anthropic_router
 from kiro.exceptions import validation_exception_handler
@@ -223,6 +228,14 @@ def validate_configuration() -> None:
     has_refresh_token = bool(REFRESH_TOKEN)
     has_creds_file = bool(KIRO_CREDS_FILE)
     has_cli_db = bool(KIRO_CLI_DB_FILE)
+    has_pool = bool(ALL_KIRO_CREDS_FILES or ALL_REFRESH_TOKENS or ALL_KIRO_CLI_DB_FILES)
+
+    # If token pool is configured, skip single-credential validation
+    if has_pool:
+        logger.info(f"Token pool configured: {len(ALL_KIRO_CREDS_FILES)} creds file(s), "
+                     f"{len(ALL_REFRESH_TOKENS)} refresh token(s), "
+                     f"{len(ALL_KIRO_CLI_DB_FILES)} SQLite DB(s)")
+        return
     
     # Check if creds file actually exists
     if KIRO_CREDS_FILE:
@@ -338,15 +351,48 @@ async def lifespan(app: FastAPI):
     )
     logger.info("Shared HTTP client created with connection pooling")
     
-    # Create AuthManager
-    # Priority: SQLite DB > JSON file > environment variables
-    app.state.auth_manager = KiroAuthManager(
-        refresh_token=REFRESH_TOKEN,
-        profile_arn=PROFILE_ARN,
-        region=REGION,
-        creds_file=KIRO_CREDS_FILE if KIRO_CREDS_FILE else None,
-        sqlite_db=KIRO_CLI_DB_FILE if KIRO_CLI_DB_FILE else None,
-    )
+    # Create AuthManager(s) - token pool or single
+    auth_managers = []
+
+    # From credential files
+    for creds_file in ALL_KIRO_CREDS_FILES:
+        mgr = KiroAuthManager(
+            region=REGION,
+            creds_file=creds_file,
+        )
+        auth_managers.append(mgr)
+
+    # From refresh tokens
+    for token in ALL_REFRESH_TOKENS:
+        mgr = KiroAuthManager(
+            refresh_token=token,
+            profile_arn=PROFILE_ARN,
+            region=REGION,
+        )
+        auth_managers.append(mgr)
+
+    # From SQLite DB files
+    for db_file in ALL_KIRO_CLI_DB_FILES:
+        mgr = KiroAuthManager(
+            region=REGION,
+            sqlite_db=db_file,
+        )
+        auth_managers.append(mgr)
+
+    # Fallback: single-token config if no pool configured
+    if not auth_managers:
+        mgr = KiroAuthManager(
+            refresh_token=REFRESH_TOKEN,
+            profile_arn=PROFILE_ARN,
+            region=REGION,
+            creds_file=KIRO_CREDS_FILE if KIRO_CREDS_FILE else None,
+            sqlite_db=KIRO_CLI_DB_FILE if KIRO_CLI_DB_FILE else None,
+        )
+        auth_managers.append(mgr)
+
+    app.state.token_pool = TokenPool(auth_managers, strategy=TOKEN_POOL_STRATEGY)
+    # Backward compat: auth_manager points to first (used for startup model fetch)
+    app.state.auth_manager = auth_managers[0]
     
     # Create model cache
     app.state.model_cache = ModelInfoCache()

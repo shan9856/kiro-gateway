@@ -125,6 +125,54 @@ def _parse_proxy_api_keys() -> Dict[str, str]:
 PROXY_API_KEY_MAP: Dict[str, str] = _parse_proxy_api_keys()
 
 # ==================================================================================================
+# Token Pool Configuration
+# ==================================================================================================
+
+# Multiple credential files (comma-separated paths)
+# Example: KIRO_CREDS_FILES="~/.aws/sso/cache/token1.json,~/.aws/sso/cache/token2.json"
+KIRO_CREDS_FILES: List[str] = [
+    f.strip() for f in os.getenv("KIRO_CREDS_FILES", "").split(",") if f.strip()
+]
+
+# Multiple refresh tokens (comma-separated)
+# Example: REFRESH_TOKENS="token_aaa,token_bbb,token_ccc"
+REFRESH_TOKENS: List[str] = [
+    t.strip() for t in os.getenv("REFRESH_TOKENS", "").split(",") if t.strip()
+]
+
+# Multiple SQLite DB files (comma-separated)
+# Example: KIRO_CLI_DB_FILES="~/.local/share/kiro-cli/data1.sqlite3,~/.local/share/kiro-cli/data2.sqlite3"
+KIRO_CLI_DB_FILES: List[str] = [
+    f.strip() for f in os.getenv("KIRO_CLI_DB_FILES", "").split(",") if f.strip()
+]
+
+
+def _collect_numbered_env(prefix: str, max_count: int = 20) -> List[str]:
+    """Collect PREFIX_1, PREFIX_2, ... up to max_count."""
+    result = []
+    for i in range(1, max_count + 1):
+        val = os.getenv(f"{prefix}_{i}", "").strip()
+        if val:
+            result.append(val)
+        else:
+            break
+    return result
+
+
+# Numbered env vars: KIRO_CREDS_FILE_1, REFRESH_TOKEN_1, KIRO_CLI_DB_FILE_1, ...
+KIRO_CREDS_FILES_NUMBERED: List[str] = _collect_numbered_env("KIRO_CREDS_FILE")
+REFRESH_TOKENS_NUMBERED: List[str] = _collect_numbered_env("REFRESH_TOKEN")
+KIRO_CLI_DB_FILES_NUMBERED: List[str] = _collect_numbered_env("KIRO_CLI_DB_FILE")
+
+# Merge both sources (comma-separated + numbered)
+ALL_KIRO_CREDS_FILES: List[str] = KIRO_CREDS_FILES + KIRO_CREDS_FILES_NUMBERED
+ALL_REFRESH_TOKENS: List[str] = REFRESH_TOKENS + REFRESH_TOKENS_NUMBERED
+ALL_KIRO_CLI_DB_FILES: List[str] = KIRO_CLI_DB_FILES + KIRO_CLI_DB_FILES_NUMBERED
+
+# Token pool selection strategy: round_robin | least_used | random
+TOKEN_POOL_STRATEGY: str = os.getenv("TOKEN_POOL_STRATEGY", "round_robin")
+
+# ==================================================================================================
 # VPN/Proxy Settings for Kiro API Access
 # ==================================================================================================
 

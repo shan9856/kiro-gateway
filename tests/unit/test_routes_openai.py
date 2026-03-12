@@ -44,8 +44,8 @@ class TestVerifyApiKey:
         print("Action: Calling verify_api_key...")
         result = await verify_api_key(valid_header)
         
-        print(f"Comparing result: Expected True, Got {result}")
-        assert result is True
+        print(f"Comparing result: Expected client name, Got {result}")
+        assert isinstance(result, str) and result
     
     @pytest.mark.asyncio
     async def test_invalid_api_key_raises_401(self):
