@@ -65,6 +65,9 @@ Made with ❤️ by [@Jwadow](https://github.com/jwadow)
 | 🔄 **Retry Logic** | Automatic retries on errors (403, 429, 5xx) |
 | 📋 **Extended model list** | Including versioned models |
 | 🔐 **Smart token management** | Automatic refresh before expiration |
+| 🔀 **Token Pool** | Distribute requests across multiple Kiro credentials |
+| 📊 **Usage Tracking** | Per-client token counting with disk persistence |
+| 👥 **Multi-client API keys** | Assign named API keys to different clients |
 
 ---
 
@@ -240,6 +243,72 @@ The gateway reads credentials from the `auth_kv` table which stores:
 Both key formats are supported for compatibility with different kiro-cli versions.
 
 </details>
+
+### Option 5: Token Pool (Multiple Credentials)
+
+Distribute requests across multiple Kiro accounts to increase throughput or avoid rate limits. Supports all credential types and can be mixed freely.
+
+```env
+# Selection strategy: round_robin (default) | least_used | random
+TOKEN_POOL_STRATEGY="round_robin"
+```
+
+<details>
+<summary>🔹 Comma-separated format</summary>
+
+```env
+KIRO_CREDS_FILES="~/.aws/sso/cache/token1.json,~/.aws/sso/cache/token2.json"
+REFRESH_TOKENS="token_aaa,token_bbb"
+KIRO_CLI_DB_FILES="~/.local/share/kiro-cli/data1.sqlite3,~/.local/share/kiro-cli/data2.sqlite3"
+```
+
+</details>
+
+<details>
+<summary>🔹 Numbered env vars format</summary>
+
+```env
+KIRO_CREDS_FILE_1="~/.aws/sso/cache/token1.json"
+KIRO_CREDS_FILE_2="~/.aws/sso/cache/token2.json"
+REFRESH_TOKEN_1="token_aaa"
+REFRESH_TOKEN_2="token_bbb"
+KIRO_CLI_DB_FILE_1="~/.local/share/kiro-cli/data1.sqlite3"
+KIRO_CLI_DB_FILE_2="~/.local/share/kiro-cli/data2.sqlite3"
+```
+
+</details>
+
+You can mix credential types (e.g., one JSON file + two refresh tokens). If no pool variables are set, the gateway falls back to the single credential options above.
+
+### Multi-client API Keys
+
+Assign named API keys to different clients for per-client usage tracking.
+
+```env
+# Format: "name:key,name:key"
+PROXY_API_KEYS="alice:key-alice-123,bob:key-bob-456"
+```
+
+Each client's requests are tracked separately. The single `PROXY_API_KEY` is always included as a fallback with client name `default`.
+
+### Usage Tracking
+
+The gateway automatically tracks per-client usage statistics including request counts, token usage (input/output), error counts, and model usage breakdown.
+
+```env
+# Path to persist stats across restarts (default: usage_stats.json)
+USAGE_STATS_FILE="usage_stats.json"
+
+# Flush to disk every N requests (default: 100)
+USAGE_STATS_SAVE_EVERY=100
+```
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/v1/usage` | GET | View usage stats (optional `?client=name` filter) |
+| `/v1/usage` | DELETE | Reset usage stats (optional `?client=name` filter) |
+
+Stats are always flushed on graceful shutdown regardless of the flush interval.
 
 ### Getting Credentials
 
@@ -437,6 +506,8 @@ Leave `VPN_PROXY_URL` empty (default) if you don't need proxy support.
 | `/v1/models` | GET | List available models |
 | `/v1/chat/completions` | POST | OpenAI Chat Completions API |
 | `/v1/messages` | POST | Anthropic Messages API |
+| `/v1/usage` | GET | View per-client usage statistics |
+| `/v1/usage` | DELETE | Reset usage statistics |
 
 ---
 
