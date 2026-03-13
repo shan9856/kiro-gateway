@@ -62,6 +62,7 @@ from kiro.config import (
     KIRO_CREDS_FILE,
     KIRO_CLI_DB_FILE,
     PROXY_API_KEY,
+    PROXY_API_KEY_MAP,
     LOG_LEVEL,
     LOG_FILE,
     LOG_ROTATION,
@@ -228,10 +229,17 @@ def validate_configuration() -> None:
         SystemExit: If critical configuration is missing
     """
     errors = []
-    
+
+    # Check API key protection
+    if not PROXY_API_KEY_MAP:
+        logger.warning(
+            "No API key configured! Your gateway is unprotected. "
+            "Set PROXY_API_KEY or PROXY_API_KEYS in .env to secure it."
+        )
+
     # Check if .env file exists (optional - can use environment variables)
     env_file = Path(".env")
-    
+
     # Check for credentials (from .env or environment variables)
     has_refresh_token = bool(REFRESH_TOKEN)
     has_creds_file = bool(KIRO_CREDS_FILE)
@@ -244,29 +252,34 @@ def validate_configuration() -> None:
         for creds_file in ALL_KIRO_CREDS_FILES:
             creds_path = Path(creds_file).expanduser()
             if not creds_path.exists():
-                errors.append(f"KIRO_CREDS_FILE not found: {creds_file}")
+                errors.append(f"Pool credential file not found: {creds_file}")
 
         # Validate that referenced SQLite DB files actually exist
         for db_file in ALL_KIRO_CLI_DB_FILES:
             db_path = Path(db_file).expanduser()
             if not db_path.exists():
-                errors.append(f"KIRO_CLI_DB_FILE not found: {db_file}")
+                errors.append(f"Pool SQLite DB file not found: {db_file}")
 
         if errors:
             logger.error("")
             logger.error("=" * 60)
-            logger.error("  CONFIGURATION ERROR")
+            logger.error("  TOKEN POOL CONFIGURATION ERROR")
             logger.error("=" * 60)
             for error in errors:
-                for line in error.split('\n'):
-                    logger.error(f"  {line}")
+                logger.error(f"  {error}")
+            logger.error("")
+            logger.error("  Check your pool env vars:")
+            logger.error("    KIRO_CREDS_FILES / KIRO_CREDS_FILE_1, _2, ...")
+            logger.error("    REFRESH_TOKENS / REFRESH_TOKEN_1, _2, ...")
+            logger.error("    KIRO_CLI_DB_FILES / KIRO_CLI_DB_FILE_1, _2, ...")
             logger.error("=" * 60)
             logger.error("")
             sys.exit(1)
 
         logger.info(f"Token pool configured: {len(ALL_KIRO_CREDS_FILES)} creds file(s), "
                      f"{len(ALL_REFRESH_TOKENS)} refresh token(s), "
-                     f"{len(ALL_KIRO_CLI_DB_FILES)} SQLite DB(s)")
+                     f"{len(ALL_KIRO_CLI_DB_FILES)} SQLite DB(s), "
+                     f"strategy={TOKEN_POOL_STRATEGY}")
         return
     
     # Check if creds file actually exists
@@ -295,11 +308,16 @@ def validate_configuration() -> None:
                 "   cp .env.example .env\n"
                 "\n"
                 "2. Edit .env and configure your credentials:\n"
-                "   2.1. Set you super-secret password as PROXY_API_KEY\n"
-                "   2.2. Set your Kiro credentials:\n"
-                "      - Option 1: KIRO_CREDS_FILE to your Kiro credentials JSON file\n"
-                "      - Option 2: REFRESH_TOKEN from Kiro IDE traffic\n"
-                "      - Option 3: KIRO_CLI_DB_FILE to kiro-cli SQLite database\n"
+                "   2.1. Set your super-secret password as PROXY_API_KEY\n"
+                "   2.2. Set your Kiro credentials (pick one):\n"
+                "      - KIRO_CREDS_FILE  (JSON credentials file)\n"
+                "      - REFRESH_TOKEN    (from Kiro IDE traffic)\n"
+                "      - KIRO_CLI_DB_FILE (kiro-cli SQLite database)\n"
+                "\n"
+                "   Or configure a token pool for multiple credentials:\n"
+                "      - KIRO_CREDS_FILES / KIRO_CREDS_FILE_1, _2, ...\n"
+                "      - REFRESH_TOKENS / REFRESH_TOKEN_1, _2, ...\n"
+                "      - KIRO_CLI_DB_FILES / KIRO_CLI_DB_FILE_1, _2, ...\n"
                 "\n"
                 "Or use environment variables (for Docker):\n"
                 "   docker run -e PROXY_API_KEY=\"...\" -e REFRESH_TOKEN=\"...\" ...\n"
@@ -313,17 +331,15 @@ def validate_configuration() -> None:
                 "\n"
                 "   Configure one of the following in your .env file:\n"
                 "\n"
-                "Set you super-secret password as PROXY_API_KEY\n"
-                "   PROXY_API_KEY=\"my-super-secret-password-123\"\n"
-                "\n"
-                "   Option 1 (Recommended): JSON credentials file\n"
+                "   Single credential:\n"
                 "      KIRO_CREDS_FILE=\"path/to/your/kiro-credentials.json\"\n"
-                "\n"
-                "   Option 2: Refresh token\n"
                 "      REFRESH_TOKEN=\"your_refresh_token_here\"\n"
-                "\n"
-                "   Option 3: kiro-cli SQLite database (AWS SSO)\n"
                 "      KIRO_CLI_DB_FILE=\"~/.local/share/kiro-cli/data.sqlite3\"\n"
+                "\n"
+                "   Or token pool (multiple credentials):\n"
+                "      KIRO_CREDS_FILES=\"path1.json,path2.json\"\n"
+                "      REFRESH_TOKENS=\"token_aaa,token_bbb\"\n"
+                "      KIRO_CLI_DB_FILES=\"db1.sqlite3,db2.sqlite3\"\n"
                 "\n"
                 "   See README.md for how to obtain credentials."
             )
