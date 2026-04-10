@@ -31,6 +31,10 @@ class TokenPool:
         self._lock = asyncio.Lock()
         self._in_flight = [0] * len(managers)
 
+        # Tag each manager with its pool index for logging
+        for i, mgr in enumerate(managers):
+            mgr.pool_index = i
+
         logger.info(f"Token pool initialized: {len(managers)} token(s), strategy={strategy}")
 
     @property

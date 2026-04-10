@@ -174,10 +174,10 @@ async def chat_completions(request: Request, request_data: ChatCompletionRequest
     Raises:
         HTTPException: On validation or API errors
     """
-    logger.info(f"Request to /v1/chat/completions (model={request_data.model}, stream={request_data.stream})")
-
     token_pool: TokenPool = request.app.state.token_pool
     auth_manager: KiroAuthManager = await token_pool.get_auth_manager()
+    cred_tag = f"credential=#{auth_manager.pool_index}" if hasattr(auth_manager, "pool_index") else ""
+    logger.info(f"Request to /v1/chat/completions (model={request_data.model}, stream={request_data.stream}, {cred_tag})")
     model_cache: ModelInfoCache = request.app.state.model_cache
     usage_stats: UsageStats = request.app.state.usage_stats
     
@@ -360,7 +360,7 @@ async def chat_completions(request: Request, request_data: ChatCompletionRequest
             
             # Log access log for error (before flush, so it gets into app_logs)
             logger.warning(
-                f"HTTP {response.status_code} - POST /v1/chat/completions - {error_message[:100]}"
+                f"HTTP {response.status_code} - POST /v1/chat/completions - {error_message[:100]} [{cred_tag}]"
             )
 
             usage_stats.record_request(client_name, request_data.model, success=False)
@@ -453,11 +453,11 @@ async def chat_completions(request: Request, request_data: ChatCompletionRequest
                     if streaming_error:
                         error_type = type(streaming_error).__name__
                         error_msg = str(streaming_error) if str(streaming_error) else "(empty message)"
-                        logger.error(f"HTTP 500 - POST /v1/chat/completions (streaming) - [{error_type}] {error_msg[:100]}")
+                        logger.error(f"HTTP 500 - POST /v1/chat/completions (streaming) - [{error_type}] {error_msg[:100]} [{cred_tag}]")
                     elif client_disconnected:
-                        logger.info(f"HTTP 200 - POST /v1/chat/completions (streaming) - client disconnected")
+                        logger.info(f"HTTP 200 - POST /v1/chat/completions (streaming) - client disconnected [{cred_tag}]")
                     else:
-                        logger.info(f"HTTP 200 - POST /v1/chat/completions (streaming) - completed")
+                        logger.info(f"HTTP 200 - POST /v1/chat/completions (streaming) - completed [{cred_tag}]")
                     # Write debug logs AFTER streaming completes
                     if debug_logger:
                         if streaming_error:
@@ -492,7 +492,7 @@ async def chat_completions(request: Request, request_data: ChatCompletionRequest
             )
 
             # Log access log for non-streaming success
-            logger.info(f"HTTP 200 - POST /v1/chat/completions (non-streaming) - completed")
+            logger.info(f"HTTP 200 - POST /v1/chat/completions (non-streaming) - completed [{cred_tag}]")
             
             # Write debug logs after non-streaming request completes
             if debug_logger:
@@ -505,7 +505,7 @@ async def chat_completions(request: Request, request_data: ChatCompletionRequest
         await token_pool.release(auth_manager)
         usage_stats.record_request(client_name, request_data.model, success=False)
         # Log access log for HTTP error
-        logger.error(f"HTTP {e.status_code} - POST /v1/chat/completions - {e.detail}")
+        logger.error(f"HTTP {e.status_code} - POST /v1/chat/completions - {e.detail} [{cred_tag}]")
         # Flush debug logs on HTTP error ("errors" mode)
         if debug_logger:
             debug_logger.flush_on_error(e.status_code, str(e.detail))
@@ -516,7 +516,7 @@ async def chat_completions(request: Request, request_data: ChatCompletionRequest
         usage_stats.record_request(client_name, request_data.model, success=False)
         logger.error(f"Internal error: {e}", exc_info=True)
         # Log access log for internal error
-        logger.error(f"HTTP 500 - POST /v1/chat/completions - {str(e)[:100]}")
+        logger.error(f"HTTP 500 - POST /v1/chat/completions - {str(e)[:100]} [{cred_tag}]")
         # Flush debug logs on internal error ("errors" mode)
         if debug_logger:
             debug_logger.flush_on_error(500, str(e))

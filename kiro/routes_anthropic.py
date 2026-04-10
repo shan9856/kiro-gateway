@@ -141,13 +141,13 @@ async def messages(
     Raises:
         HTTPException: On validation or API errors
     """
-    logger.info(f"Request to /v1/messages (model={request_data.model}, stream={request_data.stream})")
+    token_pool: TokenPool = request.app.state.token_pool
+    auth_manager: KiroAuthManager = await token_pool.get_auth_manager()
+    cred_tag = f"credential=#{auth_manager.pool_index}" if hasattr(auth_manager, "pool_index") else ""
+    logger.info(f"Request to /v1/messages (model={request_data.model}, stream={request_data.stream}, {cred_tag})")
 
     if anthropic_version:
         logger.debug(f"Anthropic-Version header: {anthropic_version}")
-
-    token_pool: TokenPool = request.app.state.token_pool
-    auth_manager: KiroAuthManager = await token_pool.get_auth_manager()
     model_cache: ModelInfoCache = request.app.state.model_cache
     usage_stats: UsageStats = request.app.state.usage_stats
     
@@ -396,7 +396,7 @@ async def messages(
             
             # Log access log for error (before flush, so it gets into app_logs)
             logger.warning(
-                f"HTTP {response.status_code} - POST /v1/messages - {error_message[:100]}"
+                f"HTTP {response.status_code} - POST /v1/messages - {error_message[:100]} [{cred_tag}]"
             )
 
             usage_stats.record_request(client_name, request_data.model, success=False)
@@ -479,11 +479,11 @@ async def messages(
                     if streaming_error:
                         error_type = type(streaming_error).__name__
                         error_msg = str(streaming_error) if str(streaming_error) else "(empty message)"
-                        logger.error(f"HTTP 500 - POST /v1/messages (streaming) - [{error_type}] {error_msg[:100]}")
+                        logger.error(f"HTTP 500 - POST /v1/messages (streaming) - [{error_type}] {error_msg[:100]} [{cred_tag}]")
                     elif client_disconnected:
-                        logger.info(f"HTTP 200 - POST /v1/messages (streaming) - client disconnected")
+                        logger.info(f"HTTP 200 - POST /v1/messages (streaming) - client disconnected [{cred_tag}]")
                     else:
-                        logger.info(f"HTTP 200 - POST /v1/messages (streaming) - completed")
+                        logger.info(f"HTTP 200 - POST /v1/messages (streaming) - completed [{cred_tag}]")
                     
                     if debug_logger:
                         if streaming_error:
@@ -522,7 +522,7 @@ async def messages(
                 input_tokens=resp_usage.get("input_tokens", 0),
                 output_tokens=resp_usage.get("output_tokens", 0),
             )
-            logger.info(f"HTTP 200 - POST /v1/messages (non-streaming) - completed")
+            logger.info(f"HTTP 200 - POST /v1/messages (non-streaming) - completed [{cred_tag}]")
 
             if debug_logger:
                 debug_logger.discard_buffers()
@@ -533,7 +533,7 @@ async def messages(
         await http_client.close()
         await token_pool.release(auth_manager)
         usage_stats.record_request(client_name, request_data.model, success=False)
-        logger.error(f"HTTP {e.status_code} - POST /v1/messages - {e.detail}")
+        logger.error(f"HTTP {e.status_code} - POST /v1/messages - {e.detail} [{cred_tag}]")
         if debug_logger:
             debug_logger.flush_on_error(e.status_code, str(e.detail))
         raise
@@ -542,7 +542,7 @@ async def messages(
         await token_pool.release(auth_manager)
         usage_stats.record_request(client_name, request_data.model, success=False)
         logger.error(f"Internal error: {e}", exc_info=True)
-        logger.error(f"HTTP 500 - POST /v1/messages - {str(e)[:100]}")
+        logger.error(f"HTTP 500 - POST /v1/messages - {str(e)[:100]} [{cred_tag}]")
         if debug_logger:
             debug_logger.flush_on_error(500, str(e))
         
