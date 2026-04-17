@@ -328,6 +328,29 @@ MODEL_ALIASES: Dict[str, str] = {
     "auto-kiro": "auto",  # Default alias to avoid Cursor's "auto" model conflict
 }
 
+# ==================================================================================================
+# Model Redirects Configuration (Unsupported → Supported Fallback)
+# ==================================================================================================
+
+# Model redirects - map unsupported model names to supported alternatives.
+# Applied AFTER normalization, so all variants (dashes, dates, etc.) are caught automatically.
+#
+# Format: {"normalized_unsupported_model": "normalized_supported_model"}
+#
+# Use case: When a client requests a model that Kiro doesn't support yet,
+# redirect it to the closest available model instead of letting it fail.
+#
+# Example:
+#   MODEL_REDIRECTS = {
+#       "claude-opus-4.7": "claude-opus-4.6",    # 4.7 not available, fall back to 4.6
+#       "claude-sonnet-5": "claude-sonnet-4.5",   # 5 not available, fall back to 4.5
+#   }
+MODEL_REDIRECTS: Dict[str, str] = {
+    "claude-opus-4.7": "claude-opus-4.6",
+    "claude-sonnet-4.7": "claude-sonnet-4.6",
+    "claude-haiku-4.7": "claude-haiku-4.6",
+}
+
 # Models to hide from /v1/models endpoint.
 # These models still work when requested directly, but are not shown in the model list.
 # This is useful when you want to show only aliases instead of original model names.

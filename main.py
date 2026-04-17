@@ -75,6 +75,7 @@ from kiro.config import (
     HIDDEN_MODELS,
     MODEL_ALIASES,
     HIDDEN_FROM_LIST,
+    MODEL_REDIRECTS,
     FALLBACK_MODELS,
     VPN_PROXY_URL,
     USAGE_STATS_FILE,
@@ -510,7 +511,8 @@ async def lifespan(app: FastAPI):
             cache=app.state.model_cache,
             hidden_models=HIDDEN_MODELS,
             aliases=MODEL_ALIASES,
-            hidden_from_list=HIDDEN_FROM_LIST
+            hidden_from_list=HIDDEN_FROM_LIST,
+            redirects=MODEL_REDIRECTS
         )
         logger.info("Model resolver initialized")
 

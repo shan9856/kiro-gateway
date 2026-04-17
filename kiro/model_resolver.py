@@ -251,11 +251,12 @@ class ModelResolver:
         cache: ModelInfoCache,
         hidden_models: Optional[Dict[str, str]] = None,
         aliases: Optional[Dict[str, str]] = None,
-        hidden_from_list: Optional[List[str]] = None
+        hidden_from_list: Optional[List[str]] = None,
+        redirects: Optional[Dict[str, str]] = None
     ):
         """
         Initialize the model resolver.
-        
+
         Args:
             cache: ModelInfoCache instance for dynamic model lookup
             hidden_models: Dict mapping display names to internal Kiro IDs.
@@ -264,11 +265,14 @@ class ModelResolver:
                     Example: {"auto-kiro": "auto", "my-opus": "claude-opus-4.5"}
             hidden_from_list: List of model IDs to hide from /v1/models endpoint.
                              These models still work but are not shown in the list.
+            redirects: Dict mapping unsupported normalized model names to supported ones.
+                      Applied after normalization. Example: {"claude-opus-4.7": "claude-opus-4.6"}
         """
         self.cache = cache
         self.hidden_models = hidden_models or {}
         self.aliases = aliases or {}
         self.hidden_from_list = set(hidden_from_list or [])
+        self.redirects = redirects or {}
     
     def resolve(self, external_model: str) -> ModelResolution:
         """
@@ -293,7 +297,15 @@ class ModelResolver:
         
         # Layer 1: Normalize name (dashes→dots, strip date)
         normalized = normalize_model_name(resolved_model)
-        
+
+        # Layer 1.5: Apply redirects (unsupported → supported fallback)
+        if normalized in self.redirects:
+            redirected = self.redirects[normalized]
+            logger.info(
+                f"Model redirect: '{normalized}' → '{redirected}'"
+            )
+            normalized = redirected
+
         logger.debug(
             f"Model resolution: '{external_model}' → normalized: '{normalized}'"
         )
