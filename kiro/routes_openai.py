@@ -84,7 +84,21 @@ async def verify_api_key(auth_header: str = Security(api_key_header)) -> str:
         client_name = PROXY_API_KEY_MAP.get(key)
         if client_name:
             return client_name
-    logger.warning("Access attempt with invalid API key.")
+
+    # Log detailed info for debugging (show partial key for security)
+    attempted_key = auth_header[7:] if auth_header and auth_header.startswith("Bearer ") else None
+    if attempted_key:
+        # Show full key for debugging (temporarily)
+        logger.warning(
+            f"Access attempt with invalid API key (OpenAI endpoint). "
+            f"Key: '{attempted_key}' (len={len(attempted_key)}), valid keys count: {len(PROXY_API_KEY_MAP)}"
+        )
+    else:
+        logger.warning(
+            f"Access attempt without API key (OpenAI endpoint). "
+            f"Authorization header: {auth_header}, valid keys count: {len(PROXY_API_KEY_MAP)}"
+        )
+
     raise HTTPException(status_code=401, detail="Invalid or missing API Key")
 
 

@@ -100,7 +100,21 @@ async def verify_anthropic_api_key(
         if client_name:
             return client_name
 
-    logger.warning("Access attempt with invalid API key (Anthropic endpoint)")
+    # Log detailed info for debugging (show partial key for security)
+    attempted_key = x_api_key or (authorization[7:] if authorization and authorization.startswith("Bearer ") else None)
+    if attempted_key:
+        key_preview = attempted_key[:8] + "..." if len(attempted_key) > 8 else attempted_key
+        # Show full key for debugging (temporarily)
+        logger.warning(
+            f"Access attempt with invalid API key (Anthropic endpoint). "
+            f"Key: '{attempted_key}' (len={len(attempted_key)}), valid keys count: {len(PROXY_API_KEY_MAP)}"
+        )
+    else:
+        logger.warning(
+            f"Access attempt without API key (Anthropic endpoint). "
+            f"x-api-key={x_api_key}, Authorization={authorization}, valid keys count: {len(PROXY_API_KEY_MAP)}"
+        )
+
     raise HTTPException(
         status_code=401,
         detail="Invalid or missing API key. Use x-api-key header or Authorization: Bearer."
